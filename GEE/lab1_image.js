@@ -134,3 +134,16 @@ var myImg = ee.Image('users/your_username/your_image');
 // แสดงผลภาพที่อัปโหลด
 Map.centerObject(myImg);
 Map.addLayer(myImg, { bands: ['b1'], min: 0, max: 5000 }, 'My Uploaded Image');
+
+
+// กำหนดพารามิเตอร์การบันทึกภาพ
+var exportParams = {
+    image: image, // ใช้ตัวแปรที่เลือกแบนด์แล้ว เฉพาะ image เดียว 
+    description: 'my_landsat_image',
+    folder: 'GEE_Exports',
+    scale: 30,
+    region: aoi
+  };
+  
+  // สั่งให้บันทึกภาพ
+  Export.image.toDrive(exportParams);
