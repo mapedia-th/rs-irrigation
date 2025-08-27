@@ -8,35 +8,47 @@
 - ตัวอย่างโค้ดเฉลย:
 
 ```js
-// 1. ค้นหาและกำหนดขอบเขตอุทยานแห่งชาติทุ่งแสลงหลวง
+// TODO 1: กำหนดขอบเขตพื้นที่ศึกษา (AOI)
+// ค้นหาขอบเขตของอุทยานแห่งชาติจากชุดข้อมูล WCMC/WDPA
+// จากนั้นใช้ .filter() เพื่อเลือกเฉพาะ 'Thung Salaeng Luang'
 var national_parks = ee.FeatureCollection("WCMC/WDPA/current/polygons");
 var aoi = national_parks.filter(ee.Filter.eq('NAME', 'Thung Salaeng Luang'));
 Map.centerObject(aoi, 9);
 
-// 2. กำหนดช่วงเวลาที่เกิดภัยแล้ง
+// TODO 2: กำหนดช่วงเวลาที่ต้องการวิเคราะห์
+// ตั้งค่าตัวแปรสำหรับวันที่เริ่มต้นและสิ้นสุดของช่วงฤดูแล้ง
 var dry_season_start = '2023-04-01';
 var dry_season_end = '2023-04-30';
 
-// 3. เรียกใช้, กรองข้อมูล Sentinel-2 และสร้างภาพปลอดเมฆ
+// TODO 3: เรียกใช้, กรองข้อมูล, และสร้างภาพปลอดเมฆ
+// กรองข้อมูล Sentinel-2 ตามช่วงเวลาและขอบเขตที่กำหนด
+// ใช้ .median() เพื่อสร้างภาพตัวแทนที่ปลอดเมฆ และ .clip() เพื่อตัดภาพตามขอบเขต AOI
 var s2_image = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
                   .filterDate(dry_season_start, dry_season_end)
                   .filterBounds(aoi)
-                  .median() // สร้างภาพจากค่ามัธยฐานเพื่อลดผลกระทบจากเมฆ
+                  .median()
                   .clip(aoi);
 
-// 4. คำนวณ NDVI
+// TODO 4: คำนวณค่าดัชนีพืชพรรณ (NDVI)
+// ใช้ฟังก์ชัน .normalizedDifference() กับแบนด์ NIR (B8) และ Red (B4)
+// และใช้ .rename() เพื่อตั้งชื่อแบนด์ใหม่ว่า 'NDVI'
 var ndvi = s2_image.normalizedDifference(['B8', 'B4']).rename('NDVI');
 
-// 5. กำหนด Palette สีสำหรับแสดงผล NDVI
+// TODO 5: กำหนดสไตล์การแสดงผลสำหรับภาพ NDVI
+// สร้างตัวแปร palette เพื่อเก็บชุดสีสำหรับไล่ระดับค่า NDVI
+// จากค่าต่ำ (สีน้ำตาล) ไปยังค่าสูง (สีเขียว)
 var ndvi_palette = ['#ce7e45', '#df923d', '#f1b555', '#fcd163', '#99b718',
                     '#74a901', '#66a000', '#529400', '#3e8601', '#207401',
                     '#056201', '#004c00', '#023b01', '#012e01', '#011d01',
                     '#011301'];
 
-// 6. แสดงผลลัพธ์บนแผนที่
+// TODO 6: แสดงผลลัพธ์ภาพ NDVI บนแผนที่
+// ใช้ Map.addLayer() เพื่อนำภาพ NDVI มาแสดงผล พร้อมกำหนดสไตล์และชื่อเลเยอร์
 Map.addLayer(ndvi, {min: 0, max: 1, palette: ndvi_palette}, 'NDVI ทุ่งแสลงหลวง (เม.ย. 2023)');
 
-// 7. ค้นหาค่า NDVI ที่ต่ำที่สุดในพื้นที่ที่กำหนด
+// TODO 7: ค้นหาค่า NDVI ที่ต่ำที่สุดในพื้นที่ศึกษา
+// ใช้ .reduceRegion() ร่วมกับ ee.Reducer.min() เพื่อหาค่าพิกเซลที่ต่ำที่สุด
+// ภายในขอบเขต aoi ที่กำหนด
 var minNdviStat = ndvi.reduceRegion({
   reducer: ee.Reducer.min(),
   geometry: aoi,
@@ -44,9 +56,12 @@ var minNdviStat = ndvi.reduceRegion({
   maxPixels: 1e9
 });
 
-// 8. ดึงค่าตัวเลข NDVI ต่ำสุดออกมาจากผลลัพธ์
+// TODO 8: ดึงค่าตัวเลข NDVI ต่ำสุดออกมาและแสดงผลใน Console
+// ใช้ .get() เพื่อดึงค่าจากผลลัพธ์ของ reduceRegion
+// และใช้ print() เพื่อแสดงค่าในหน้าต่าง Console
 var minNdviValue = minNdviStat.get('NDVI');
-print('ค่า NDVI ต่ำที่สุดที่พบ:', minNdviV
+print('ค่า NDVI ต่ำที่สุดที่พบ:', minNdviValue);
+
 
 ```
 
@@ -60,39 +75,55 @@ print('ค่า NDVI ต่ำที่สุดที่พบ:', minNdviV
 
 - ตัวอย่างโค้ดเฉลย:
 ```js
-// 1. กำหนดตำแหน่งและขอบเขตของเขื่อนทั้ง 3 แห่ง
+// TODO 1: กำหนดค่าพารามิเตอร์เริ่มต้น
+// กำหนดจุดศูนย์กลางและขอบเขตพื้นที่ศึกษา (AOI) ของเขื่อนทั้ง 3 แห่ง
+// โดยใช้ ee.Geometry.Point() เพื่อสร้างจุด และ .buffer() เพื่อสร้างรัศมีวงกลมรอบจุดนั้น
 var bhumibol_dam = ee.Geometry.Point([98.90097271466408, 17.305860597412906]).buffer(22000); // เขื่อนภูมิพล
 var sirikit_dam = ee.Geometry.Point([100.49741578298826, 17.858492230422126]).buffer(25000); // เขื่อนสิริกิติ์
 var kwaenoi_dam = ee.Geometry.Point([100.44014579079604, 17.14305938457368]).buffer(10000); // เขื่อนแควน้อยฯ
 
-// 2. กำหนดช่วงเวลา
+// กำหนดช่วงเวลาที่ต้องการวิเคราะห์
 var start_date = '2024-11-01';
 var end_date = '2024-11-15';
 
-// *** ส่วนที่เพิ่มเข้ามา: กำหนดค่าสีสำหรับแสดงผล NDWI ***
+// กำหนดสไตล์การแสดงผลสำหรับภาพ NDWI
+// palette คือชุดสี โดยจะไล่สีจากค่าน้อยไปมาก (ดิน -> น้ำ)
 var ndwi_vis_params = {
   min: -1, 
   max: 1, 
-  palette: ['brown', 'white', 'blue'] // ต่ำ (ดิน) = น้ำตาล, กลาง = ขาว, สูง (น้ำ) = น้ำเงิน
+  palette: ['brown', 'white', 'blue']
 };
 
-// 3. สร้าง Function สำหรับคำนวณพื้นที่และแสดงผลแผนที่
+// TODO 2: สร้างฟังก์ชันหลักสำหรับประมวลผลข้อมูลของเขื่อนแต่ละแห่ง
+// ฟังก์ชันนี้จะรับ 'geometry' (ขอบเขต) และ 'dam_name' (ชื่อเขื่อน) เข้ามา
 function processDamData(geometry, dam_name) {
+  
+  // TODO 2.1: เรียกใช้และกรองข้อมูล Sentinel-2
+  // กรองข้อมูลภาพตามช่วงเวลาและขอบเขตที่กำหนด
+  // จากนั้นใช้ .median() เพื่อสร้างภาพตัวแทนที่ปลอดเมฆ และ .clip() เพื่อตัดภาพตามขอบเขต
   var image = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
                 .filterDate(start_date, end_date)
                 .filterBounds(geometry)
                 .median()
                 .clip(geometry);
 
+  // TODO 2.2: คำนวณดัชนีน้ำ (NDWI)
+  // ใช้ฟังก์ชัน .normalizedDifference() กับแบนด์ Green (B3) และ NIR (B8)
   var ndwi = image.normalizedDifference(['B3', 'B8']);
   
-  // *** ส่วนที่เพิ่มเข้ามา: แสดงผล NDWI บนแผนที่ ***
+  // TODO 2.3: แสดงผลลัพธ์ NDWI บนแผนที่
+  // ใช้ Map.addLayer() เพื่อนำภาพ NDWI ที่ได้มาแสดงบนแผนที่ พร้อมกำหนดสไตล์และชื่อเลเยอร์
   Map.addLayer(ndwi, ndwi_vis_params, 'NDWI ' + dam_name);
 
-  // --- ส่วนการคำนวณพื้นที่ยังคงเดิม ---
-  var water = ndwi.gt(0); // พื้นที่ที่เป็นน้ำ
+  // TODO 2.4: คำนวณพื้นที่ที่เป็นน้ำ
+  // 1. ใช้ .gt(0) เพื่อสร้างภาพ Mask ที่มีค่าเป็น 1 เฉพาะบริเวณที่เป็นน้ำ (NDWI > 0)
+  // 2. ใช้ .multiply(ee.Image.pixelArea()) เพื่อเปลี่ยนค่าพิกเซลจาก 1 ให้เป็นขนาดพื้นที่ (ตร.ม.)
+  var water = ndwi.gt(0);
   var area_image = water.multiply(ee.Image.pixelArea());
 
+  // TODO 2.5: สรุปผลรวมพื้นที่และพิมพ์ผลลัพธ์
+  // ใช้ .reduceRegion() เพื่อรวมค่าพื้นที่ทั้งหมดในขอบเขตที่กำหนด
+  // จากนั้นดึงค่าตัวเลขออกมาและแปลงหน่วยเป็น ตารางกิโลเมตร
   var stats = area_image.reduceRegion({
     reducer: ee.Reducer.sum(),
     geometry: geometry,
@@ -101,13 +132,15 @@ function processDamData(geometry, dam_name) {
   });
 
   var water_area_sq_km = ee.Number(stats.values().get(0)).divide(1e6);
-  print('พื้นที่ผิวน้ำ ' + dam_name, water_area_sq_km);
+  print('พื้นที่ผิวน้ำ(ตร.กม.) ' + dam_name, water_area_sq
 }
 
-// 4. เรียกใช้ Function เพื่อคำนวณและแสดงผล (เปลี่ยนชื่อฟังก์ชันเล็กน้อยเพื่อความชัดเจน)
+// TODO 3: เรียกใช้งานฟังก์ชันสำหรับเขื่อนแต่ละแห่ง
+// เรียกใช้ฟังก์ชัน processDamData โดยส่งขอบเขตและชื่อของแต่ละเขื่อนเข้าไป
 processDamData(bhumibol_dam, 'เขื่อนภูมิพล');
 processDamData(sirikit_dam, 'เขื่อนสิริกิติ์');
 processDamData(kwaenoi_dam, 'เขื่อนแควน้อยฯ');
+
 
 ```
 
