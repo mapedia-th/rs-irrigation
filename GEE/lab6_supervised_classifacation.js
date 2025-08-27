@@ -14,7 +14,9 @@ var waterROI = waterMask.selfMask().reduceToVectors({
   scale: 10,
   geometryType: 'polygon',
   labelProperty: 'class',
-  reducer: ee.Reducer.countEvery()
+  reducer: ee.Reducer.countEvery(),
+  bestEffort: true
+
 });
 
 // property class = 0 สำหรับน้ำ
@@ -153,3 +155,29 @@ Export.table.toDrive({
 });
 
 Map.addLayer(vectors)
+
+
+// นำไปใช้กับภาพอื่น
+var newImage = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+                 .filterBounds(aoi2)
+                 .filterDate('2025-01-01','2025-03-31')
+                 .map(maskS2sr)
+                .map(function(img){
+                  var scaled = img.select(['B2','B3','B4','B8','B11','B12']).divide(10000);
+                  return img.addBands(scaled, null, true);
+                });
+
+var s2_new = newImage.median().clip(aoi2);
+
+// คำนวณดัชนีน้ำ
+var ndwi  = s2_new.normalizedDifference(['B3','B8']).rename('NDWI');
+var mndwi = s2_new.normalizedDifference(['B3','B11']).rename('MNDWI');
+
+// feature image
+var featureImage2 = s2_new.select(['B2','B3','B4','B8','B11','B12'])
+                      .addBands([ndwi, mndwi]);
+
+// Apply trained RF model
+var classified2 = featureImage2.classify(rf);
+Map.addLayer(classified2, {min:0,max:1,palette:['red','blue']}, 'Water RF AOI2');
+
