@@ -1,9 +1,9 @@
 # ภารกิจที่ 1: "ตามหาสีเขียวที่หายไป"
 - โจทย์:
-  - จากข้อมูลรายงานในช่วงฤดูแล้งที่รุนแรงที่สุดของปี 2023 (1-30 เมษายน) พื้นที่ป่าแห่งหนึ่งในเขตอุทยานแห่งชาติทุ่งแสลงหลวง (จ.พิษณุโลก) มีสภาพแห้งแล้งกว่าปกติ
+  - จากข้อมูลรายงานในช่วงฤดูแล้งที่รุนแรงที่สุดของปี ตั้งแต่ 1-30 เมษายน 2023 พื้นที่ป่าแห่งหนึ่งใน จ.น่าน ประเทศไทย มีสภาพแห้งแล้งกว่าปกติ
   - ให้ทีมใช้ GEE สร้างภาพ NDVI ของพื้นที่ดังกล่าวในช่วงเวลานั้น และให้ทำการดึงค่า NDVI ต่ำที่สุด (สีน้ำตาล/เหลือง) ให้ print ออกมา
 
-- แนวทาง: ทีมจะต้องค้นหาชุดข้อมูล FeatureCollection ของอุทยานแห่งชาติในประเทศไทย เพื่อนำมาใช้เป็นขอบเขต (AOI) จากนั้นจึงเรียกใช้ข้อมูล Sentinel-2, กรองข้อมูลตามช่วงเวลาและขอบเขต, สร้างภาพปลอดเมฆด้วย .median(), คำนวณ NDVI, และสุดท้ายคือการแสดงผลแผนที่ NDVI โดยใช้ Palette สีที่เหมาะสมเพื่อแยกพื้นที่พืชพรรณสมบูรณ์ (สีเขียว) ออกจากพื้นที่แห้งแล้ง (สีน้ำตาล/เหลือง)
+- แนวทาง: ทีมจะต้องค้นหาชุดข้อมูล FeatureCollection ของจังหวัดน่านในประเทศไทย เพื่อนำมาใช้เป็นขอบเขต (AOI) จากนั้นจึงเรียกใช้ข้อมูล Sentinel-2, กรองข้อมูลตามช่วงเวลาและขอบเขต, สร้างภาพปลอดเมฆด้วย .median(), คำนวณ NDVI, และสุดท้ายคือการแสดงผลแผนที่ NDVI โดยใช้ Palette สีที่เหมาะสมเพื่อแยกพื้นที่พืชพรรณสมบูรณ์ (สีเขียว) ออกจากพื้นที่แห้งแล้ง (สีน้ำตาล/เหลือง)
 
 - ตัวอย่างโค้ดเฉลย:
 
@@ -11,8 +11,12 @@
 // TODO 1: กำหนดขอบเขตพื้นที่ศึกษา (AOI)
 // ค้นหาขอบเขตของอุทยานแห่งชาติจากชุดข้อมูล WCMC/WDPA
 // จากนั้นใช้ .filter() เพื่อเลือกเฉพาะ 'Thung Salaeng Luang'
-var national_parks = ee.FeatureCollection("WCMC/WDPA/current/polygons");
-var aoi = national_parks.filter(ee.Filter.eq('NAME', 'Thung Salaeng Luang'));
+// var national_parks = ee.FeatureCollection("WCMC/WDPA/current/polygons");
+// var aoi = national_parks.filter(ee.Filter.eq('NAME', 'Thung Salaeng Luang'));
+// Map.centerObject(aoi, 9);
+
+var provinces = ee.FeatureCollection("FAO/GAUL_SIMPLIFIED_500m/2015/level1");
+var aoi = provinces.filter(ee.Filter.eq('ADM1_NAME', 'Nan'));
 Map.centerObject(aoi, 9);
 
 // TODO 2: กำหนดช่วงเวลาที่ต้องการวิเคราะห์
@@ -44,7 +48,7 @@ var ndvi_palette = ['#ce7e45', '#df923d', '#f1b555', '#fcd163', '#99b718',
 
 // TODO 6: แสดงผลลัพธ์ภาพ NDVI บนแผนที่
 // ใช้ Map.addLayer() เพื่อนำภาพ NDVI มาแสดงผล พร้อมกำหนดสไตล์และชื่อเลเยอร์
-Map.addLayer(ndvi, {min: 0, max: 1, palette: ndvi_palette}, 'NDVI ทุ่งแสลงหลวง (เม.ย. 2023)');
+Map.addLayer(ndvi, {min: 0, max: 1, palette: ndvi_palette}, 'NDVI Nan (เม.ย. 2023)');
 
 // TODO 7: ค้นหาค่า NDVI ที่ต่ำที่สุดในพื้นที่ศึกษา
 // ใช้ .reduceRegion() ร่วมกับ ee.Reducer.min() เพื่อหาค่าพิกเซลที่ต่ำที่สุด
