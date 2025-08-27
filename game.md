@@ -47,3 +47,56 @@ var minNdviValue = minNdviStat.get('NDVI');
 print('ค่า NDVI ต่ำที่สุดที่พบ:', minNdviV
 
 ```
+
+# 2
+```js
+// 1. กำหนดตำแหน่งและขอบเขตของเขื่อนทั้ง 3 แห่ง
+var bhumibol_dam = ee.Geometry.Point([98.90097271466408, 17.305860597412906]).buffer(22000); // เขื่อนภูมิพล
+var sirikit_dam = ee.Geometry.Point([100.49741578298826, 17.858492230422126]).buffer(25000); // เขื่อนสิริกิติ์
+var kwaenoi_dam = ee.Geometry.Point([100.44014579079604, 17.14305938457368]).buffer(10000); // เขื่อนแควน้อยฯ
+
+// 2. กำหนดช่วงเวลา
+var start_date = '2024-11-01';
+var end_date = '2024-11-15';
+
+// *** ส่วนที่เพิ่มเข้ามา: กำหนดค่าสีสำหรับแสดงผล NDWI ***
+var ndwi_vis_params = {
+  min: -1, 
+  max: 1, 
+  palette: ['brown', 'white', 'blue'] // ต่ำ (ดิน) = น้ำตาล, กลาง = ขาว, สูง (น้ำ) = น้ำเงิน
+};
+
+// 3. สร้าง Function สำหรับคำนวณพื้นที่และแสดงผลแผนที่
+function processDamData(geometry, dam_name) {
+  var image = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+                .filterDate(start_date, end_date)
+                .filterBounds(geometry)
+                .median()
+                .clip(geometry);
+
+  var ndwi = image.normalizedDifference(['B3', 'B8']);
+  
+  // *** ส่วนที่เพิ่มเข้ามา: แสดงผล NDWI บนแผนที่ ***
+  Map.addLayer(ndwi, ndwi_vis_params, 'NDWI ' + dam_name);
+
+  // --- ส่วนการคำนวณพื้นที่ยังคงเดิม ---
+  var water = ndwi.gt(0); // พื้นที่ที่เป็นน้ำ
+  var area_image = water.multiply(ee.Image.pixelArea());
+
+  var stats = area_image.reduceRegion({
+    reducer: ee.Reducer.sum(),
+    geometry: geometry,
+    scale: 10,
+    maxPixels: 1e9
+  });
+
+  var water_area_sq_km = ee.Number(stats.values().get(0)).divide(1e6);
+  print('พื้นที่ผิวน้ำ ' + dam_name, water_area_sq_km);
+}
+
+// 4. เรียกใช้ Function เพื่อคำนวณและแสดงผล (เปลี่ยนชื่อฟังก์ชันเล็กน้อยเพื่อความชัดเจน)
+processDamData(bhumibol_dam, 'เขื่อนภูมิพล');
+processDamData(sirikit_dam, 'เขื่อนสิริกิติ์');
+processDamData(kwaenoi_dam, 'เขื่อนแควน้อยฯ');
+
+```
