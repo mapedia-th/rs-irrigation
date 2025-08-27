@@ -369,3 +369,69 @@ Map.addLayer(compositeWithNDVI.select('NDVI'), ndviVis, 'NDVI');
 // Map.addLayer(clippedNdvi.select('NDVI'), ndviVis, 'NDVI Clip');
 
 ```
+---
+# 5. SRTM and Contour
+```js
+// =================================================================================
+// TODO 1: การเตรียมข้อมูลพื้นฐาน (DEM และพื้นที่ศึกษา)
+// =================================================================================
+
+// 1.1 กำหนดพื้นที่ศึกษา (Area of Interest - AOI)
+var AOI = ee.Geometry.Polygon([
+  [
+    [99.44736075297868, 17.07099803265264],
+    [99.44736075297868, 16.71116666584878],
+    [99.75833663457848, 16.71116666584878],
+    [99.75833663457848, 17.07099803265264],
+    [99.44736075297868, 17.07099803265264]
+  ]
+]);
+
+// 1.2 เรียกใช้ข้อมูล DEM จาก SRTM และเลือกเฉพาะแบนด์ 'elevation'
+var strmelevation = ee.Image("USGS/SRTMGL1_003").select('elevation');
+
+// =================================================================================
+// TODO 2: การแสดงผล DEM และ Hillshade
+// เพื่อให้เห็นภาพรวมของลักษณะภูมิประเทศ
+// =================================================================================
+
+// 2.1 สร้าง Hillshade (ภาพจำลองแสงเงา) จากข้อมูล DEM
+var hillshade = ee.Terrain.hillshade(strmelevation);
+
+// 2.2 กำหนดค่าการแสดงผลสำหรับ DEM โดยใช้ชุดสี Terrain
+var demVis = {
+  min: 0,
+  max: 1500,
+  palette: ['006633', 'E5FFCC', '662A00', 'D8D8D8', 'FFFFFF']
+};
+
+// 2.3 เพิ่ม Layer ของ DEM และ Hillshade ลงบนแผนที่
+Map.addLayer(strmelevation.clip(AOI), demVis, 'DEM', false); // false = ปิดไว้ก่อน
+Map.addLayer(hillshade.clip(AOI), {min: 0, max: 255}, 'Hillshade', false); // false = ปิดไว้ก่อน
+
+// =================================================================================
+// TODO 3: สร้าง Contour โดยใช้ `zeroCrossing` (วิธีที่แนะนำ)
+// หลักการ: หาพิกเซลที่เป็นเส้นขอบระหว่างโซนความสูงที่กำหนด
+// =================================================================================
+
+// 3.1 สร้างรายการระดับความสูงที่ต้องการสร้างเส้น (จาก 0 ถึง 2500 เมตร ทุกๆ 20 เมตร)
+var lines = ee.List.sequence(0, 2500, 20);
+
+// 3.2 สร้างฟังก์ชันเพื่อวนซ้ำการสร้างเส้น Contour ในแต่ละระดับความสูง
+var contourlines = lines.map(function(line) {
+  var mycontour = strmelevation
+    .convolve(ee.Kernel.gaussian(5, 3)) // ปรับ DEM ให้เรียบเนียน
+    .subtract(ee.Image.constant(line)).zeroCrossing() // หาเส้นขอบ
+    .multiply(ee.Image.constant(line)).toFloat();
+    
+  return mycontour.mask(mycontour); // ทำให้พื้นหลังโปร่งใส
+});
+
+// 3.3 รวมเส้น Contour ทั้งหมดให้เป็นภาพเดียว
+var contourlinesImage = ee.ImageCollection(contourlines).mosaic();
+
+// 3.4 เพิ่ม Layer ของเส้น Contour ลงบนแผนที่
+Map.addLayer(contourlinesImage.clip(AOI), {min: 0, max: 2500, palette:['ff0000']}, 'Contour (20m)');
+Map.centerObject(AOI, 11);
+
+```
