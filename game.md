@@ -1,0 +1,49 @@
+# ภารกิจที่ 1: "ตามหาสีเขียวที่หายไป" (ระดับง่าย)
+- โจทย์: "มีรายงานว่าในช่วงฤดูแล้งที่รุนแรงที่สุดของปี 2023 (1-30 เมษายน) พื้นที่ป่าแห่งหนึ่งในเขตอุทยานแห่งชาติทุ่งแสลงหลวง (จ.พิษณุโลก) มีสภาพแห้งแล้งกว่าปกติ ให้ทีมของคุณใช้ GEE สร้างภาพ NDVI ของพื้นที่ดังกล่าวในช่วงเวลานั้น และชี้จุดที่มีค่า NDVI ต่ำที่สุด (สีน้ำตาล/เหลือง) ให้เห็นบนแผนที่"
+
+- แนวทาง: ทีมจะต้องค้นหาชุดข้อมูล FeatureCollection ของอุทยานแห่งชาติในประเทศไทย เพื่อนำมาใช้เป็นขอบเขต (AOI) จากนั้นจึงเรียกใช้ข้อมูล Sentinel-2, กรองข้อมูลตามช่วงเวลาและขอบเขต, สร้างภาพปลอดเมฆด้วย .median(), คำนวณ NDVI, และสุดท้ายคือการแสดงผลแผนที่ NDVI โดยใช้ Palette สีที่เหมาะสมเพื่อแยกพื้นที่พืชพรรณสมบูรณ์ (สีเขียว) ออกจากพื้นที่แห้งแล้ง (สีน้ำตาล/เหลือง)
+
+- ตัวอย่างโค้ดเฉลย:
+
+```js
+// 1. ค้นหาและกำหนดขอบเขตอุทยานแห่งชาติทุ่งแสลงหลวง
+var national_parks = ee.FeatureCollection("WCMC/WDPA/current/polygons");
+var aoi = national_parks.filter(ee.Filter.eq('NAME', 'Thung Salaeng Luang'));
+Map.centerObject(aoi, 9);
+
+// 2. กำหนดช่วงเวลาที่เกิดภัยแล้ง
+var dry_season_start = '2023-04-01';
+var dry_season_end = '2023-04-30';
+
+// 3. เรียกใช้, กรองข้อมูล Sentinel-2 และสร้างภาพปลอดเมฆ
+var s2_image = ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+                  .filterDate(dry_season_start, dry_season_end)
+                  .filterBounds(aoi)
+                  .median() // สร้างภาพจากค่ามัธยฐานเพื่อลดผลกระทบจากเมฆ
+                  .clip(aoi);
+
+// 4. คำนวณ NDVI
+var ndvi = s2_image.normalizedDifference(['B8', 'B4']).rename('NDVI');
+
+// 5. กำหนด Palette สีสำหรับแสดงผล NDVI
+var ndvi_palette = ['#ce7e45', '#df923d', '#f1b555', '#fcd163', '#99b718',
+                    '#74a901', '#66a000', '#529400', '#3e8601', '#207401',
+                    '#056201', '#004c00', '#023b01', '#012e01', '#011d01',
+                    '#011301'];
+
+// 6. แสดงผลลัพธ์บนแผนที่
+Map.addLayer(ndvi, {min: 0, max: 1, palette: ndvi_palette}, 'NDVI ทุ่งแสลงหลวง (เม.ย. 2023)');
+
+// 7. ค้นหาค่า NDVI ที่ต่ำที่สุดในพื้นที่ที่กำหนด
+var minNdviStat = ndvi.reduceRegion({
+  reducer: ee.Reducer.min(),
+  geometry: aoi,
+  scale: 10,
+  maxPixels: 1e9
+});
+
+// 8. ดึงค่าตัวเลข NDVI ต่ำสุดออกมาจากผลลัพธ์
+var minNdviValue = minNdviStat.get('NDVI');
+print('ค่า NDVI ต่ำที่สุดที่พบ:', minNdviV
+
+```
