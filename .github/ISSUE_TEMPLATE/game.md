@@ -62,6 +62,26 @@ var minNdviStat = ndvi.reduceRegion({
 var minNdviValue = minNdviStat.get('NDVI');
 print('ค่า NDVI ต่ำที่สุดที่พบ:', minNdviValue);
 
+// TODO 9: สร้าง Mask และแปลงเป็นข้อมูลจุด (Point)
+// 1. สร้างภาพ Mask ที่มีค่าเป็น 1 เฉพาะบริเวณที่ NDVI ต่ำที่สุด
+// 2. ใช้ reduceToVectors() เพื่อแปลง Raster Mask ให้เป็น Vector (ในที่นี้คือจุด)
+var lowestNdviPixels = ndvi.eq(ee.Image.constant(minNdviValue));
+var minNdviPoint = lowestNdviPixels.selfMask().reduceToVectors({
+  geometry: aoi,
+  scale: 10,
+  geometryType: 'centroid',
+  maxPixels: 1e9
+});
+
+// TODO 10: ดึงค่าพิกัดและแสดงผล
+// 1. ดึงข้อมูล Geometry (จุด) ออกมาจาก Feature แรกที่หาเจอ
+// 2. ใช้ .coordinates() เพื่อดึงค่าพิกัด [lon, lat]
+// 3. แสดงผลพิกัดใน Console และเพิ่มจุด Marker สีแดงบนแผนที่
+var point = minNdviPoint.first().geometry();
+var coordinates = point.coordinates();
+print('พิกัดของจุดที่ NDVI ต่ำที่สุด (Lon, Lat):', coordinates);
+Map.addLayer(point, {color: 'red'}, 'จุด NDVI ต่ำสุด');
+
 
 ```
 
