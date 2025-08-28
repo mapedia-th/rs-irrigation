@@ -435,3 +435,163 @@ Map.addLayer(contourlinesImage.clip(AOI), {min: 0, max: 2500, palette:['ff0000']
 Map.centerObject(AOI, 11);
 
 ```
+# 6. Supervise Classification
+```js
+// 1. การจำแนกการใช้ประโยชน์ที่ดินแบบควบคุม (5 คลาส) โดยใช้ข้อมูล Sentinel-2 ในสองช่วงเวลา
+
+// กำหนดขอบเขตพื้นที่ศึกษา (Region of Interest)
+var roi = ee.Geometry.Polygon([
+  [
+    [100.75232211164234, 15.38193990270986],
+    [100.75232211164234, 14.831900794708048],
+    [101.30535273127566, 14.831900794708048],
+    [101.30535273127566, 15.38193990270986],
+    [100.75232211164234, 15.38193990270986]
+  ]
+]);
+
+// 2. โหลดข้อมูลสำหรับฝึก (Training Data) ซึ่งเป็น FeatureCollection ของจุดหรือโพลีกอน
+//    ต้องมี property ชื่อ 'landcover' ที่มีค่า 0–4 (สำหรับ 5 คลาส)
+//    ตัวอย่าง: 0=แหล่งน้ำ, 1=ป่าไม้, 2=เขตเมือง, 3=เกษตรกรรม, 4=ที่ดินว่างเปล่า
+// TODO: แก้ไข 'YOUR_ASSET_PATH' ให้เป็น Asset Path ของข้อมูล Training ที่คุณเตรียมไว้
+var trainingFC = ee.FeatureCollection('projects/ee-end-to-end-gee/assets/roi');
+
+
+print('ข้อมูลสำหรับฝึก:', trainingFC);
+Map.addLayer(trainingFC, {
+  color: 'blue'
+}, 'Training Points');
+
+
+// 3. โหลดข้อมูล Sentinel-2 และสร้างภาพ Composite สำหรับสองช่วงเวลา
+// TODO: แก้ไขช่วงเวลาที่สอง (start2, end2) ให้เป็นช่วงเวลาในอดีตที่ต้องการเปรียบเทียบ
+var start1 = '2019-01-01',
+  end1 = '2019-12-31';
+var start2 = '2024-01-01',
+  end2 = '2024-12-31';
+
+function makeComposite(start, end) {
+  return ee.ImageCollection('COPERNICUS/S2_SR_HARMONIZED')
+    .filterDate(start, end)
+    .filterBounds(roi)
+    .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
+    .median()
+    .clip(roi);
+}
+
+var comp1 = makeComposite(start1, end1);
+var comp2 = makeComposite(start2, end2);
+
+// 4. เลือกแบนด์ (Spectral Bands) ที่จะใช้ในการจำแนก
+var bands = ['B2', 'B3', 'B4', 'B8', 'B11', 'B12']; // Blue, Green, Red, NIR, SWIR1, SWIR2
+
+// 5. สุ่มตัวอย่างค่าแบนด์จากภาพ Composite ณ ตำแหน่งของข้อมูลสำหรับฝึก
+var samples1 = comp1.select(bands).sampleRegions({
+  collection: trainingFC,
+  properties: ['landcover'],
+  scale: 10,
+  geometries: true
+});
+
+var samples2 = comp2.select(bands).sampleRegions({
+  collection: trainingFC,
+  properties: ['landcover'],
+  scale: 10,
+  geometries: true
+});
+
+// 6. ฝึกโมเดลจำแนก (Random Forest) สำหรับแต่ละช่วงเวลา
+var classifier1 = ee.Classifier.smileRandomForest(100)
+  .train({
+    features: samples1,
+    classProperty: 'landcover',
+    inputProperties: bands
+  });
+
+var classifier2 = ee.Classifier.smileRandomForest(100)
+  .train({
+    features: samples2,
+    classProperty: 'landcover',
+    inputProperties: bands
+  });
+
+
+// 7. จำแนกประเภทการใช้ที่ดินจากภาพ Composite
+var classified1 = comp1.select(bands).classify(classifier1);
+var classified2 = comp2.select(bands).classify(classifier2);
+
+// 8. กำหนดชุดสี (Palette) สำหรับ 5 คลาส
+// TODO: คุณสามารถแก้ไขรหัสสีได้ตามต้องการ
+var palette = [
+  '0000FF', // 0 = แหล่งน้ำ (น้ำเงิน)
+  '007F00', // 1 = ป่าไม้ (เขียวเข้ม)
+  'FF0000', // 2 = เขตเมือง (แดง)
+  'FFFF00', // 3 = เกษตรกรรม (เหลือง)
+  '804000', // 4 = ที่ดินว่างเปล่า (น้ำตาล)
+];
+
+// 9. แสดงผลลัพธ์บนแผนที่
+Map.centerObject(roi, 10);
+Map.addLayer(comp1, {
+  bands: ['B4', 'B3', 'B2'],
+  min: 0,
+  max: 3000
+}, 'ภาพสีจริง ' + start1.slice(0, 4), false);
+Map.addLayer(classified1, {
+  min: 0,
+  max: 4,
+  palette: palette
+}, 'ผลการจำแนก ' + start1.slice(0, 4), true);
+
+Map.addLayer(comp2, {
+  bands: ['B4', 'B3', 'B2'],
+  min: 0,
+  max: 3000
+}, 'ภาพสีจริง ' + start2.slice(0, 4), false);
+Map.addLayer(classified2, {
+  min: 0,
+  max: 4,
+  palette: palette
+}, 'ผลการจำแนก ' + start2.slice(0, 4), true);
+
+// 10. (ทางเลือก) การประเมินความแม่นยำสำหรับช่วงเวลาที่ 1
+// TODO: หากต้องการประเมินความแม่นยำ 
+
+var trainTest1 = samples1.randomColumn('rnd', 42);
+var split = 0.7;
+var trainSet = trainTest1.filter(ee.Filter.lt('rnd', split));
+var testSet = trainTest1.filter(ee.Filter.gte('rnd', split));
+
+var trainedRF = ee.Classifier.smileRandomForest(100)
+    .train({features: trainSet, classProperty: 'landcover', inputProperties: bands});
+
+var validated = testSet.classify(trainedRF);
+
+var testAccuracy = validated.errorMatrix('landcover', 'classification');
+print('ตาราง Confusion Matrix (ช่วงเวลาที่ 1):', testAccuracy);
+print('ความแม่นยำโดยรวม:', testAccuracy.accuracy());
+
+
+// 11. (ทางเลือก) การส่งออกผลลัพธ์ (Export)
+// TODO: หากต้องการส่งออกผลลัพธ์เป็นไฟล์ GeoTIFF ให้นำเครื่องหมาย /* และ */ ออก และแก้ไขชื่อไฟล์ตามต้องการ
+/*
+Export.image.toDrive({
+  image: classified1,
+  description: 'LandUse_Classification_2019',
+  folder: 'GEE_Exports',
+  scale: 10,
+  region: roi,
+  maxPixels: 1e13
+});
+
+Export.image.toDrive({
+  image: classified2,
+  description: 'LandUse_Classification_2024',
+  folder: 'GEE_Exports',
+  scale: 10,
+  region: roi,
+  maxPixels: 1e13
+});
+*/
+
+```
