@@ -595,3 +595,143 @@ Export.image.toDrive({
 */
 
 ```
+---
+# 7. Drought Monitoring using CHIRPS Precipitation Data
+```
+โค้ดนี้มีขั้นตอนการทำงานหลักๆ ดังนี้:
+
+โหลดข้อมูล: เริ่มจากการดึงข้อมูลสำคัญ 2 อย่างคือ ขอบเขตของประเทศไทย และข้อมูลปริมาณน้ำฝนรายวันย้อนหลังจากดาวเทียม CHIRPS
+
+กำหนดช่วงเวลา: เราต้องกำหนดช่วงเวลา 3 เดือนที่ต้องการวิเคราะห์ (เช่น มกราคม-มีนาคม 2024) โค้ดจะคำนวณปริมาณน้ำฝนรวมทั้งหมดใน 3 เดือนนี้
+
+สร้างข้อมูลเปรียบเทียบ: เพื่อให้รู้ว่าฝนที่ตกนั้น "น้อย" หรือ "มาก" เราต้องมีค่าปกติไว้เปรียบเทียบ โค้ดจึงไปคำนวณปริมาณน้ำฝนรวมในช่วงเวลาเดียวกัน (มกราคม-มีนาคม) ของทุกๆ ปีย้อนหลัง (ตั้งแต่ปี 1981-2023) เพื่อสร้างเป็นชุดข้อมูลฐาน
+
+คำนวณค่าทางสถิติ: จากข้อมูลย้อนหลังทั้งหมด จะถูกนำมาหา ค่าเฉลี่ย (mean) และ ค่าเบี่ยงเบนมาตรฐาน (stddev) ซึ่งเป็นตัวแทนของ "สภาวะฝนปกติ" ในอดีต
+
+คำนวณดัชนี SPI: นี่คือหัวใจหลัก คือการนำเอา (ปริมาณฝนปัจจุบัน - ปริมาณฝนเฉลี่ยในอดีต) แล้วหารด้วย ค่าเบี่ยงเบนมาตรฐาน ผลลัพธ์ที่ได้คือค่า SPI ซึ่งจะบอกเราว่าปริมาณฝนในปัจจุบันเบี่ยงเบนไปจากค่าปกติมากน้อยแค่ไหน
+
+แสดงผล: สุดท้ายคือการนำค่า SPI มาแสดงผลบนแผนที่ โดยใช้สีต่างๆ เพื่อให้ง่ายต่อการตีความ
+
+สีโทนร้อน (แดง, ส้ม): หมายถึงฝนน้อยกว่าปกติ (สภาวะแห้งแล้ง)
+
+สีโทนเย็น (เขียว): หมายถึงฝนมากกว่าปกติ (สภาวะชื้น)
+```
+```js
+// หัวข้อ: การเฝ้าระวังภัยแล้งโดยใช้ข้อมูลปริมาณน้ำฝน CHIRPS
+
+// 1. โหลดข้อมูลขอบเขตประเทศไทย และข้อมูลปริมาณน้ำฝนรายเดือนจาก CHIRPS
+// TODO: คุณสามารถเปลี่ยนขอบเขตเป็นจังหวัดหรือภูมิภาคได้โดยแก้ไขส่วน filter
+var thailand = ee.FeatureCollection('USDOS/LSIB_SIMPLE/2017')
+  .filter(ee.Filter.eq('country_na', 'Thailand'));
+var precip = ee.ImageCollection('UCSB-CHG/CHIRPS/DAILY')
+  .select('precipitation');
+
+// 2. กำหนดช่วงเวลา 3 เดือนที่สนใจเพื่อคำนวณดัชนีฝนมาตรฐาน (SPI-3)
+// TODO: แก้ไขวันที่ '2024-01-01' เป็นวันที่เริ่มต้นของช่วงเวลา 3 เดือนที่คุณต้องการวิเคราะห์
+var targetDate = ee.Date('2024-01-01');
+var endPeriod = targetDate.advance(3, 'month');
+print('ช่วงเวลาที่สนใจ:', targetDate, endPeriod);
+
+// คำนวณปริมาณน้ำฝนรวมในช่วงเวลา 3 เดือนที่สนใจ
+var current3mo = precip
+  .filterDate(targetDate, endPeriod)
+  .sum();
+
+// 3. สร้างชุดข้อมูลปริมาณน้ำฝนรวม 3 เดือนย้อนหลัง
+// TODO: คุณสามารถปรับช่วงปีในอดีต (1981, 2023) เพื่อใช้เป็นข้อมูลฐานในการเปรียบเทียบได้
+var years = ee.List.sequence(1981, 2023);
+var historical3mo = ee.ImageCollection.fromImages(
+  years.map(function(y) {
+    var start = ee.Date.fromYMD(y, 1, 1); // เริ่มจากเดือนมกราคมของแต่ละปี
+    var end = start.advance(3, 'month'); // สิ้นสุดที่เดือนมีนาคม
+
+    return precip
+      .filterDate(start, end)
+      .sum()
+      .set('system:time_start', start.millis());
+  }));
+print('ชุดข้อมูลย้อนหลัง:', historical3mo);
+
+// 4. คำนวณค่าเฉลี่ยและค่าเบี่ยงเบนมาตรฐานจากข้อมูลในอดีต
+// สองค่านี้เป็นตัวแทนของสภาพอากาศปกติในอดีตสำหรับช่วงเวลานั้นๆ
+var mean3mo = historical3mo.mean();
+var stddev3mo = historical3mo.reduce(ee.Reducer.stdDev());
+print('ค่าเฉลี่ยน้ำฝนในอดีต:', mean3mo);
+
+// 5. คำนวณค่า SPI-3 (โดยประมาณ) จากค่าความผิดปกติมาตรฐาน
+// สูตรคือ: (ฝนปัจจุบัน - ฝนเฉลี่ยในอดีต) / ค่าเบี่ยงเบนมาตรฐาน
+var spi3 = current3mo
+  .subtract(mean3mo)
+  .divide(stddev3mo)
+  .clip(thailand);
+
+// 6. กำหนดพารามิเตอร์สำหรับแสดงภาพค่า SPI
+// ค่าบวก (สีเขียว) หมายถึง สภาวะชื้นกว่าปกติ
+// ค่าลบ (สีแดง/ส้ม) หมายถึง สภาวะแห้งแล้งกว่าปกติ
+var spiVis = {
+  min: -2,
+  max: 2,
+  palette: [
+    '#d73027', // แล้งรุนแรง
+    '#fc8d59',
+    '#fee08b',
+    '#d9ef8b', // ใกล้เคียงปกติ
+    '#91cf60',
+    '#1a9850' // ชื้น
+  ]
+};
+
+// 7. แสดงผลชั้นข้อมูล SPI และเพิ่มคำอธิบายสัญลักษณ์ (Legend)
+Map.centerObject(thailand, 6);
+Map.addLayer(spi3, spiVis, 'SPI-3 (Jan-Mar 2024)');
+
+// สร้าง Panel สำหรับ Legend
+var legend = ui.Panel({
+  style: {
+    position: 'bottom-left',
+    padding: '8px 15px',
+    backgroundColor: 'white',
+    fontWeight: 'bold'
+  }
+});
+legend.add(ui.Label('SPI-3 Legend'));
+
+var makeRow = function(color, name) {
+  var colorBox = ui.Label({
+    style: {
+      backgroundColor: color,
+      padding: '8px',
+      margin: '0 0 4px 0'
+    }
+  });
+  var description = ui.Label(name, {
+    margin: '0 0 4px 6px'
+  });
+  return ui.Panel([colorBox, description], ui.Panel.Layout.Flow('horizontal'));
+};
+
+var palette = spiVis.palette;
+var names = ['แล้งรุนแรง (<= -1.5)', 'แล้ง (-1.5 ถึง -1.0)', 'แล้งเล็กน้อย (-1.0 ถึง -0.5)',
+  'ใกล้เคียงปกติ (-0.5 ถึง 0.5)', 'ชื้น (0.5 ถึง 1.0)', 'ชื้นมาก (> 1.0)'
+];
+
+palette.forEach(function(color, i) {
+  legend.add(makeRow(color, names[i]));
+});
+
+// (ทางเลือก) แสดงชั้นข้อมูลน้ำฝนเพื่อเปรียบเทียบ
+Map.addLayer(current3mo.clip(thailand), {
+  min: 0,
+  max: 400,
+  palette: ['#FFFFFF', '#ADD8E6', '#0000CD', '#00008B']
+}, 'ปริมาณฝนปัจจุบัน', false);
+Map.addLayer(historical3mo.mean().clip(thailand), {
+  min: 0,
+  max: 500,
+  palette: ['#FFFFFF', '#ADD8E6', '#0000CD', '#00008B']
+}, 'ปริมาณฝนเฉลี่ยในอดีต', false);
+
+Map.add(legend);
+
+
+```
